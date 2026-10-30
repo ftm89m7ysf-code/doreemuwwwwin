@@ -3,6 +3,7 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
+import { sendMessage, recordInbound } from "./lib.js";
 
 const {
   PORT = "3000",
@@ -72,24 +73,13 @@ async function decideReply(text) {
   return defaultReply;
 }
 
-async function sendMessage(recipientId, text) {
-  const res = await fetch(`https://graph.instagram.com/${GRAPH_VERSION}/me/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${IG_ACCESS_TOKEN}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ recipient: { id: recipientId }, message: { text } }),
-  });
-  if (!res.ok) throw new Error(`Send API ${res.status}: ${await res.text()}`);
-}
-
 async function handleEvent(body) {
   for (const entry of body.entry ?? []) {
     for (const ev of entry.messaging ?? []) {
       const text = ev.message?.text;
       // 自分自身の送信(echo)や、テキスト以外は無視 (無限ループ防止)
       if (!text || ev.message.is_echo || ev.sender.id === entry.id) continue;
+      recordInbound(ev.sender.id, text);
       try {
         await sendMessage(ev.sender.id, await decideReply(text));
       } catch (err) {
